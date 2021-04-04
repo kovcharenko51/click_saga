@@ -1,0 +1,1 @@
+This is a simple clicker game for a python review task.
