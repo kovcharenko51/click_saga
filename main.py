@@ -2,7 +2,7 @@ import pygame
 
 
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, health, enemy_img):
+    def __init__(self, health: int, enemy_img: pygame.image):
         pygame.sprite.Sprite.__init__(self)
         self.image = enemy_img
         self.rect = self.image.get_rect()
@@ -12,16 +12,16 @@ class Enemy(pygame.sprite.Sprite):
 
 
 class EnemySpawner:
-    def __init__(self, basic_health):
+    def __init__(self, basic_health: int):
         self.health = basic_health
         self.image = pygame.image.load("img/enemy.png")
 
-    def spawn(self):
+    def spawn(self) -> Enemy:
         return Enemy(self.health, self.image)
 
 
 class Hero(pygame.sprite.Sprite):
-    def __init__(self, img, damage, coordinates, hero_type):
+    def __init__(self, img: pygame.image, damage: int, coordinates: (int, int), hero_type: str, cost: int):
         pygame.sprite.Sprite.__init__(self)
         self.image = img
         self.basic_damage = damage
@@ -29,6 +29,21 @@ class Hero(pygame.sprite.Sprite):
         self.hero_type = hero_type
         self.rect = self.image.get_rect()
         self.rect.center = coordinates
+        self.level = 1
+        self.cost = cost
+
+    def upgrade_hero(self) -> int:
+        inc = 0
+        global balance
+        if balance >= self.cost:
+            balance -= self.cost
+            if self.hero_type == "knight":
+                self.damage += self.level * self.basic_damage
+            else:
+                inc = self.level * self.basic_damage
+                self.level += 1
+            self.cost *= 2
+        return inc
 
 
 class HeroFactory:
@@ -38,16 +53,17 @@ class HeroFactory:
         self.coordinates = {"knight": (300, 325), "archer": (200, 300), "wizard": (100, 325)}
         self.basic_damages = {"knight": 1, "archer": 10, "wizard": 50}
         self.filenames = {"knight": "knight.png", "archer": "archer.png", "wizard": "wizard.png"}
+        self.costs = {"knight": 1, "archer": 5, "wizard": 10}
         self.images = {}
         for hero_type in self.types:
             self.images[hero_type] = pygame.image.load("img/" + self.filenames[hero_type])
 
-    def create(self, hero_type):
-        return Hero(self.images[hero_type], self.basic_damages[hero_type], self.coordinates[hero_type], hero_type)
+    def create(self, hero_type: str) -> Hero:
+        return Hero(self.images[hero_type], self.basic_damages[hero_type], self.coordinates[hero_type], hero_type, self.costs[hero_type])
 
 
 class Button:
-    def __init__(self, color, x, y, width, height, text, this_hero, hero_type, cost, face_img):
+    def __init__(self, color: (int, int, int), x: int, y: int, width: int, height: int, text: str, this_hero: Hero, hero_type: str, face_img: pygame.image):
         self.color = color
         self.x = x
         self.y = y
@@ -56,52 +72,34 @@ class Button:
         self.text = text
         self.hero = this_hero
         self.hero_type = hero_type
-        self.level = 1
-        self.cost = cost
         self.face_img = face_img
 
-    def draw(self, window):
+    def draw(self, window: pygame.display):
         text = game_font.render(self.text, False, (0, 0, 0))
-        cost = game_font.render(str(self.cost), False, (0, 0, 0))
+        hero_cost = hero_factory.costs[self.hero_type]
+        if self.hero is not None:
+            hero_cost = self.hero.cost
+        cost = game_font.render(str(hero_cost), False, (0, 0, 0))
         pygame.draw.rect(window, (255, 255, 0), (self.x, self.y, self.width, self.height))
         window.blit(text, (self.x, self.y))
         window.blit(cost, (self.x + self.width, self.y))
         window.blit(self.face_img, (self.x - 40, self.y - 5))
 
-    def check_click(self, mouse_pos):
+    def check_click(self, mouse_pos: (int, int)) -> bool:
         return self.x < mouse_pos[0] < self.x + self.width and self.y < mouse_pos[1] < self.y + self.height
-
-    def upgrade_hero(self):
-        inc = 0
-        global balance
-        if balance >= self.cost:
-            balance -= self.cost
-            if self.hero_type == "knight":
-                self.hero.damage += self.level * self.hero.basic_damage
-            elif self.hero is not None:
-                inc = self.level * self.hero.basic_damage
-                self.hero.damage += inc
-                self.level += 1
-            else:
-                self.hero = hero_factory.create(self.hero_type)
-                heroes[self.hero_type] = self.hero
-                inc = self.hero.basic_damage
-            self.cost *= 2
-        return inc
 
 
 class UpgradeShop:
-    def __init__(self, window):
+    def __init__(self, window: pygame.display):
         self.buttons_list = []
         self.window = window
-        self.costs = {"knight": 1, "archer": 5, "wizard": 10}
         x = 50
         y = 100
         width = 100
         height = 30
         for hero_type in HeroFactory.types:
             face_img = pygame.image.load("img/" + hero_type + "_face.png")
-            button = Button((255, 255, 255), x, y, width, height, "Upgrade", heroes.get(hero_type), hero_type, self.costs[hero_type], face_img)
+            button = Button((255, 255, 255), x, y, width, height, "Upgrade", heroes.get(hero_type), hero_type, face_img)
             self.buttons_list.append(button)
             y += height + 10
 
@@ -109,20 +107,25 @@ class UpgradeShop:
         for button in self.buttons_list:
             button.draw(self.window)
 
-    def upgrade(self, mouse_pos):
+    def upgrade(self, mouse_pos: (int, int)) -> int:
         inc = 0
         for button in self.buttons_list:
             if button.check_click(mouse_pos):
-                inc = button.upgrade_hero()
+                if button.hero is not None:
+                    inc = button.hero.upgrade_hero()
+                else:
+                    button.hero = hero_factory.create(button.hero_type)
+                    heroes[button.hero_type] = button.hero
+                    inc = button.hero.basic_damage
         return inc
 
 
-def draw_enemy_health(window, enemy):
+def draw_enemy_health(window: pygame.display, enemy: Enemy):
     pygame.draw.rect(window, (0, 0, 0), (425, 90, 150, 30))
     pygame.draw.rect(window, (0, 255, 0), (425, 90, 150 * (enemy.health / enemy.max_health), 30))
 
 
-def attack(enemy, damage):
+def attack(enemy: Enemy, damage: int):
     balance_inc = 0
     enemy.health -= damage
     if enemy.health <= 0:
